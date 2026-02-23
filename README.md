@@ -1,9 +1,9 @@
 # defenx-nlp
 
-**Semantic NLP Intelligence Toolkit**
+**Lightweight Semantic Embedding & Inference Runtime for Python**
 
-> A domain-agnostic library for semantic sentence encoding, embedding generation,
-> GPU/CPU-aware device handling, and reusable inference interfaces.
+> Standardizes semantic embedding inference across CPU, CUDA, and API backends with a single interface.
+> One encoder. Swap the backend. Keep the same code.
 
 [![PyPI version](https://img.shields.io/pypi/v/defenx-nlp)](https://pypi.org/project/defenx-nlp/)
 [![Python](https://img.shields.io/pypi/pyversions/defenx-nlp)](https://pypi.org/project/defenx-nlp/)
@@ -13,16 +13,42 @@
 
 ## Overview
 
-`defenx-nlp` is a standalone, pip-installable semantic NLP library. It is designed to be **domain-agnostic** so
-the same encoder that understands human chat intent can be repurposed for:
+Same encoder, same interface, different problems:
 
-| Use case | What you embed |
-|---|---|
-| NLP classification | User sentences → intent labels |
-| Anomaly detection | System log lines → outlier scores |
-| Log intelligence | Server events → semantic clusters |
-| Behavioural analytics | User actions → behavioural patterns |
-| Semantic search | Documents → retrieval ranking |
+```python
+from defenx_nlp import SemanticEncoder, cosine_similarity, batch_cosine_similarity
+from defenx_nlp import normalize_embedding
+
+enc = SemanticEncoder()   # one encoder for everything
+
+# ── Semantic search ───────────────────────────────────────
+docs = ["Install Python on Linux", "Reset your password", "Upgrade RAM"]
+doc_embs = enc.encode_batch(docs)
+q = enc.encode("how to set up python")
+scores = batch_cosine_similarity(q, doc_embs)
+print(docs[scores.argmax()])   # "Install Python on Linux"
+
+# ── Anomaly detection ────────────────────────────────────
+normal = enc.encode_batch(["User login", "Page viewed", "Session started"])
+baseline = normalize_embedding(normal.mean(axis=0))
+suspect = enc.encode("rm -rf / executed as root")
+print(cosine_similarity(baseline, suspect))   # ~0.15 — anomaly
+
+# ── Clustering / labelling ───────────────────────────────
+labels = {"billing": enc.encode("payment invoice charge"),
+          "support": enc.encode("help issue problem")}
+ticket = enc.encode("I was charged twice")
+best = max(labels, key=lambda k: cosine_similarity(labels[k], ticket))
+print(best)   # "billing"
+```
+
+Three domains, zero code changes to the encoder. That's the point.
+
+---
+
+## Architecture
+
+![defenx-nlp architecture](docs/architecture.png)
 
 ---
 
@@ -119,6 +145,25 @@ enc.warmup()   # initialise CuDNN kernels at startup, not first request
 
 ---
 
+## Why not just use sentence-transformers directly?
+
+You can. `defenx-nlp` is built on top of it. But if you use `sentence-transformers` raw, you end up writing the same boilerplate in every project:
+
+| Problem | sentence-transformers | defenx-nlp |
+|---|---|---|
+| Device handling | You write `torch.cuda.is_available()` checks yourself | `get_device("auto")` — handled |
+| Thread safety | Not built in, you add locks yourself | Double-checked locking in `SemanticEncoder` |
+| Lazy loading | Model loads at import time, slows startup | Loads on first `encode()` call, not at import |
+| Swap backends | Rewrite code when switching from local model to OpenAI | Subclass `BaseEncoder`, same interface |
+| Output format | Returns tensors or numpy depending on flags | Always returns CPU float32 numpy arrays |
+| Production warmup | You figure out CuDNN cold-start yourself | `enc.warmup()` — one line |
+| Preprocessing | Bring your own | `clean_text()`, `batch_clean()`, `truncate()` included |
+
+If you're writing a one-off script, `sentence-transformers` alone is fine.
+If you're building something that goes into production, or you need to swap models/backends later, `defenx-nlp` saves you from re-solving these problems every time.
+
+---
+
 ## API Summary
 
 | Symbol | Description |
@@ -162,7 +207,7 @@ Full API docs: [`docs/api_reference.md`](docs/api_reference.md)
 | CUDA | 11.8 or 12.x |
 | Python | 3.11+ |
 
-> **Tested on:** AMD Ryzen 7 4800H + NVIDIA RTX 3050 6 GB (CUDA 12.8) on Kali Linux (WSL2).
+> **Tested on:** AMD Ryzen 7235HS + NVIDIA RTX 3050 6 GB (CUDA 12.8) on Kali Linux (WSL2).
 > Average inference latency: **~15 ms/sentence on CUDA**, **~80 ms on CPU**.
 
 ---
@@ -171,10 +216,10 @@ Full API docs: [`docs/api_reference.md`](docs/api_reference.md)
 
 | OS | CPU mode | CUDA mode | Notes |
 |---|---|---|---|
-| **Linux** (Ubuntu 20.04+, Debian 11+, Kali) | ✅ | ✅ | Fully tested |
-| **Windows 10 / 11** | ✅ | ✅ | Use WSL2 for CUDA in WSL |
-| **macOS 12+** (Intel) | ✅ | — | No NVIDIA CUDA support |
-| **macOS 12+** (Apple Silicon M1/M2/M3) | ✅ | MPS | Use `device="mps"` |
+| **Linux** (Ubuntu 20.04+, Debian 11+, Kali) | Yes | Yes | Fully tested |
+| **Windows 10 / 11** | Yes | Yes | Use WSL2 for CUDA in WSL |
+| **macOS 12+** (Intel) | Yes | — | No NVIDIA CUDA support |
+| **macOS 12+** (Apple Silicon M1/M2/M3) | Yes | MPS | Use `device="mps"` |
 
 ---
 
@@ -258,7 +303,7 @@ python examples/batch_encoding.py
 ```bash
 pip install build twine
 python -m build
-# Creates dist/defenx_nlp-0.1.0.tar.gz and dist/defenx_nlp-0.1.0-py3-none-any.whl
+# Creates dist/defenx_nlp-0.2.1.tar.gz and dist/defenx_nlp-0.2.1-py3-none-any.whl
 ```
 
 ### 2. Test on TestPyPI first (always)

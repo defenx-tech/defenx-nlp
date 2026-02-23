@@ -49,9 +49,9 @@ from .utils import (
     top_k_similar,
 )
 
-__version__  = "0.1.0"
+__version__  = "0.2.1"
 __author__   = "DEFENX"
-__email__    = "contact@defenx.ai"
+__email__    = "defenx@zohomail.in"
 __license__  = "MIT"
 
 __all__ = [
