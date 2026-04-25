@@ -1,264 +1,269 @@
-# defenx-nlp — API Reference
+# defenx-nlp API Reference
 
-## Table of Contents
-1. [SemanticEncoder](#semanticencoder)
-2. [BaseEncoder](#baseencoder)
-3. [BaseInferenceEngine](#baseinferenceengine)
-4. [Device utilities](#device-utilities)
-5. [Preprocessing](#preprocessing)
-6. [Similarity & Retrieval](#similarity--retrieval)
+## Core Objects
 
----
+### `SemanticEncoder`
 
-## SemanticEncoder
+Backend-driven embedding facade.
 
 ```python
 from defenx_nlp import SemanticEncoder
-```
 
-Thread-safe sentence encoder backed by a SentenceTransformer model.
-
-### Constructor
-
-```python
-SemanticEncoder(
-    model_name: str = "all-MiniLM-L6-v2",
-    device: str = "auto",
-    lazy: bool = True,
+encoder = SemanticEncoder(
+    model_name="all-MiniLM-L6-v2",
+    device="auto",
+    lazy=True,
+    backend="sentence-transformers",
+    batch_size=32,
+    normalize_embeddings=False,
 )
 ```
 
-| Parameter    | Type  | Default              | Description                                          |
-|--------------|-------|----------------------|------------------------------------------------------|
-| `model_name` | `str` | `"all-MiniLM-L6-v2"`| Any HuggingFace sentence-transformers model name.    |
-| `device`     | `str` | `"auto"`             | `"auto"`, `"cuda"`, `"cpu"`, or `"mps"`.            |
-| `lazy`       | `bool`| `True`               | Load model on first encode call (False = immediate). |
+Important constructor arguments:
 
-### Methods
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `model_name` | `str` | `"all-MiniLM-L6-v2"` | Sentence-transformers model name |
+| `device` | `str` | `"auto"` | Device preference such as `"auto"`, `"cpu"`, `"cuda"`, `"mps"` |
+| `lazy` | `bool` | `True` | Load the backend only when first used |
+| `backend` | `str` | `"sentence-transformers"` | Backend identifier |
+| `batch_size` | `int` | `32` | Default batch size for encoding |
+| `normalize_embeddings` | `bool` | `False` | Return normalized embeddings from supported backends |
+| `backend_options` | `Mapping[str, Any] \| None` | `None` | Backend-specific options |
+| `config` | `EncoderConfig \| None` | `None` | Optional prebuilt config object |
+| `backend_instance` | `BaseEncoderBackend \| None` | `None` | Inject a custom backend instance |
 
-#### `encode(text) → np.ndarray`
+Methods and properties:
 
-Encode a single string.
+- `encode(text: str) -> np.ndarray`
+- `encode_batch(texts: Sequence[str], *, batch_size: int | None = None, show_progress: bool = False) -> np.ndarray`
+- `warmup() -> None`
+- `from_config(config: EncoderConfig) -> SemanticEncoder`
+- `config`
+- `backend`
+- `backend_name`
+- `model_name`
+- `embedding_dim`
+- `device`
 
-```python
-emb = enc.encode("Hello world")
-# shape: (384,), dtype: float32
-```
+### `SemanticSearchEngine`
 
-| Parameter | Type  | Description     |
-|-----------|-------|-----------------|
-| `text`    | `str` | Input sentence. |
-
-**Returns:** `np.ndarray` of shape `(embedding_dim,)`, dtype `float32`.
-
----
-
-#### `encode_batch(texts, batch_size=32, show_progress=False) → np.ndarray`
-
-Encode a list of strings in one batched forward pass.
-
-```python
-embs = enc.encode_batch(["Hello", "World"], batch_size=16)
-# shape: (2, 384), dtype: float32
-```
-
-| Parameter       | Type         | Default | Description                              |
-|-----------------|--------------|---------|------------------------------------------|
-| `texts`         | `list[str]`  | —       | Input sentences.                         |
-| `batch_size`    | `int`        | `32`    | Sentences per GPU forward pass.          |
-| `show_progress` | `bool`       | `False` | Display tqdm progress bar.               |
-
-**Returns:** `np.ndarray` of shape `(N, embedding_dim)`, dtype `float32`.
-
----
-
-#### `warmup() → None`
-
-Initialise CUDA kernels with a dummy encode. Call once at startup to avoid the first-inference cold-start spike.
-
----
-
-#### `similarity(a, b) → float`
-
-Cosine similarity between two embeddings. Inherited from `BaseEncoder`.
-
----
-
-### Properties
-
-| Property        | Type           | Description                            |
-|-----------------|----------------|----------------------------------------|
-| `embedding_dim` | `int`          | Output vector dimension (e.g. 384).    |
-| `device`        | `torch.device` | Hardware the model runs on.            |
-| `model_name`    | `str`          | Name of the underlying model.          |
-
----
-
-## BaseEncoder
+Semantic document retrieval over an encoder and vector index.
 
 ```python
-from defenx_nlp import BaseEncoder
+from defenx_nlp import SemanticEncoder, SemanticSearchEngine
+
+encoder = SemanticEncoder()
+search = SemanticSearchEngine(encoder)
 ```
 
-Abstract base class. Subclass to create custom encoder backends.
+Constructor:
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `encoder` | `BaseEncoder` | required | Encoder used for documents and queries |
+| `vector_index` | `BaseVectorIndex \| None` | `None` | Custom index instance |
+| `vector_index_factory` | `Callable[[], BaseVectorIndex] \| None` | `None` | Factory used when resetting the index |
+| `text_preprocessor` | `Callable[[str], str] \| None` | `None` | Optional transform applied to indexed/query text |
+| `batch_size` | `int \| None` | `None` | Batch size forwarded to `encode_batch()` |
+
+Methods and properties:
+
+- `index(documents: Sequence[str | DocumentRecord]) -> None`
+- `search(query: str, top_k: int = 5) -> list[SearchResult]`
+- `clear() -> None`
+- `document_count`
+
+### `PrototypeInferenceEngine`
+
+Prototype-based inference over embeddings.
 
 ```python
-class MyEncoder(BaseEncoder):
-    def encode(self, text: str) -> np.ndarray: ...
-    def encode_batch(self, texts: list) -> np.ndarray: ...
-
-    @property
-    def embedding_dim(self) -> int: return 768
-
-    @property
-    def device(self) -> torch.device: return torch.device("cpu")
+from defenx_nlp import PrototypeInferenceEngine
 ```
 
----
+Constructor:
 
-## BaseInferenceEngine
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `prototypes` | `Sequence[LabelPrototype]` | required | Label prototypes used for scoring |
+| `mode` | `"classification" \| "scoring"` | `"classification"` | Output mode |
+| `temperature` | `float` | `1.0` | Softmax temperature in classification mode |
+
+Helpers:
+
+- `from_embeddings(label_embeddings, *, mode="classification", temperature=1.0, metadata=None)`
+- `from_texts(encoder, label_examples, *, mode="classification", temperature=1.0, batch_size=None, metadata=None)`
+
+Methods and properties:
+
+- `infer(embedding: np.ndarray) -> Prediction`
+- `infer_batch(embeddings: np.ndarray) -> list[Prediction]`
+- `mode`
+- `embedding_dim`
+
+### `NLPipeline`
+
+Simple end-to-end orchestration for preprocessing, encoding, and inference.
 
 ```python
-from defenx_nlp import BaseInferenceEngine
+from defenx_nlp import NLPipeline
 ```
 
-Abstract base for any model that consumes pre-computed embeddings.
+Constructor:
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `encoder` | `BaseEncoder` | required | Encoder used by the pipeline |
+| `inference_engine` | `BaseInferenceEngine \| None` | `None` | Optional inference engine |
+| `preprocessing_config` | `PreprocessingConfig \| None` | `None` | Default cleaning config |
+| `enable_preprocessing` | `bool` | `True` | Enable or bypass preprocessing |
+| `batch_size` | `int` | `32` | Preferred batch size for batch runs |
+| `preprocessor` | `Callable[[str], str] \| None` | `None` | Custom text preprocessor |
+
+Methods and properties:
+
+- `run(text: str) -> PipelineResult`
+- `run_batch(texts: Sequence[str]) -> list[PipelineResult]`
+- `batch_size`
+
+## Configuration and Data Schemas
+
+### `EncoderConfig`
 
 ```python
-class MyClassifier(BaseInferenceEngine):
-    def infer(self, embedding: np.ndarray) -> np.ndarray: ...
-    def infer_batch(self, embeddings: np.ndarray) -> np.ndarray: ...
+from defenx_nlp import EncoderConfig
 ```
 
----
+Fields:
 
-## Device utilities
+- `backend: str = "sentence-transformers"`
+- `model_name: str = "all-MiniLM-L6-v2"`
+- `device: str = "auto"`
+- `lazy: bool = True`
+- `batch_size: int = 32`
+- `normalize_embeddings: bool = False`
+- `backend_options: dict[str, Any] = {}`
 
-### `get_device(preferred="auto") → torch.device`
+### `PreprocessingConfig`
 
-```python
-from defenx_nlp import get_device
+Fields:
 
-device = get_device()          # auto — CUDA if available, else CPU
-device = get_device("cuda")    # require CUDA (raises if absent)
-device = get_device("cpu")     # force CPU
-device = get_device("mps")     # Apple Silicon (fallback to CPU)
-```
+- `lowercase: bool = False`
+- `remove_urls_flag: bool = False`
+- `remove_emails_flag: bool = False`
+- `remove_special: bool = False`
+- `max_chars: int | None = None`
 
----
+Helper:
 
-### `device_info() → dict`
+- `to_clean_kwargs() -> dict[str, Any]`
 
-```python
-from defenx_nlp import device_info
+### `DocumentRecord`
 
-info = device_info()
-# {
-#   "cuda_available": True,
-#   "device_count":   1,
-#   "active_device":  "cuda",
-#   "device_name":    "NVIDIA GeForce RTX 3050",
-#   "vram_gb":        6.0,
-#   "torch_version":  "2.3.0+cu128",
-#   "cuda_version":   "12.8",
-# }
-```
+Structured document stored inside retrieval indexes.
 
----
+Fields:
 
-## Preprocessing
+- `document_id: str`
+- `text: str`
+- `metadata: dict[str, Any]`
 
-```python
-from defenx_nlp import clean_text, batch_clean, truncate
-```
+### `SearchResult`
 
-### `clean_text(text, **options) → str`
+Fields:
 
-```python
-clean_text("  HELLO  WORLD  ", lowercase=True)
-# → "hello world"
+- `document: DocumentRecord`
+- `score: float`
+- `rank: int`
 
-clean_text("Email me at x@y.com", remove_emails_flag=True)
-# → "Email me at "
-```
+### `LabelPrototype`
 
-| Parameter            | Default | Description                    |
-|----------------------|---------|--------------------------------|
-| `lowercase`          | `False` | Convert to lower case.         |
-| `remove_urls_flag`   | `False` | Strip HTTP/HTTPS/FTP URLs.     |
-| `remove_emails_flag` | `False` | Strip e-mail addresses.        |
-| `remove_special`     | `False` | Strip non-alphanumeric chars.  |
-| `max_chars`          | `None`  | Hard truncate at N characters. |
+Fields:
 
----
+- `label: str`
+- `embedding: np.ndarray`
+- `metadata: dict[str, Any]`
 
-### `batch_clean(texts, **options) → list[str]`
+### `Prediction`
 
-Apply `clean_text` to every element of a list.
+Fields:
 
-```python
-batch_clean(["  A  ", "  B  "])
-# → ["A", "B"]
-```
+- `label: str`
+- `score: float`
+- `scores: dict[str, float]`
+- `metadata: dict[str, Any]`
 
----
+### `PipelineResult`
 
-### `truncate(text, max_chars=512, ellipsis=True) → str`
+Fields:
 
-```python
-truncate("hello world", max_chars=5)
-# → "hello…"
-```
+- `raw_text: str`
+- `processed_text: str`
+- `embedding: np.ndarray`
+- `prediction: Prediction | None`
 
----
+## Backends and Interfaces
 
-## Similarity & Retrieval
+### Encoder backends
 
-```python
-from defenx_nlp import (
-    cosine_similarity,
-    batch_cosine_similarity,
-    top_k_similar,
-    normalize_embedding,
-    normalize_batch,
-)
-```
+- `SentenceTransformerBackend`: implemented default backend
+- `OnnxEncoderBackend`: contract stub, not implemented yet
+- `APIEncoderBackend`: contract stub, not implemented yet
+- `EncoderBackendFactory`: backend registry/factory
 
-### `cosine_similarity(a, b) → float`
+### Base interfaces
 
-Cosine similarity between two 1-D arrays. Returns value in `[-1, 1]`.
+- `BaseEncoder`
+- `BaseInferenceEngine`
+- `BaseRetriever`
+- `BaseVectorIndex`
+- `BaseEncoderBackend`
 
-```python
-sim = cosine_similarity(enc.encode("hello"), enc.encode("hi"))
-```
+These interfaces are the extension points if you want to plug in a custom
+encoder, inference engine, or vector index.
 
----
+## Retrieval Backends
 
-### `batch_cosine_similarity(query, matrix) → np.ndarray`
+### `NumpyVectorIndex`
 
-Vectorised cosine similarity: query `(D,)` vs every row of `matrix (N, D)`.
+Thread-safe cosine similarity index backed by NumPy.
 
-```python
-scores = batch_cosine_similarity(qemb, corpus_embs)  # (N,)
-```
+Methods and properties:
 
----
+- `build(vectors: np.ndarray) -> None`
+- `search(query_vector: np.ndarray, top_k: int) -> list[tuple[int, float]]`
+- `size`
+- `dimension`
 
-### `top_k_similar(query, corpus, k=5) → list[tuple[int, float]]`
+### `FaissVectorIndex`
 
-```python
-results = top_k_similar(qemb, [e1, e2, e3], k=2)
-# → [(2, 0.91), (0, 0.73)]
-```
+Optional FAISS-backed vector index. Requires a compatible FAISS installation.
 
----
+Methods and properties:
 
-### `normalize_embedding(emb) → np.ndarray`
+- `build(vectors: np.ndarray) -> None`
+- `search(query_vector: np.ndarray, top_k: int) -> list[tuple[int, float]]`
+- `size`
+- `dimension`
 
-L2-normalise a single embedding to unit length.
+## Utilities
 
----
+### Device helpers
 
-### `normalize_batch(matrix) → np.ndarray`
+- `get_device(preferred="auto") -> torch.device`
+- `device_info() -> dict[str, str | int | float | bool]`
 
-Row-wise L2-normalisation of shape `(N, D)` matrix.
+### Preprocessing helpers
+
+- `clean_text(text, *, lowercase=False, remove_urls_flag=False, remove_emails_flag=False, remove_special=False, max_chars=None) -> str`
+- `batch_clean(texts, **clean_kwargs) -> list[str]`
+- `truncate(text, max_chars=512, ellipsis=True) -> str`
+
+### Similarity helpers
+
+- `cosine_similarity(a, b) -> float`
+- `batch_cosine_similarity(query, matrix) -> np.ndarray`
+- `top_k_similar(query, corpus, k=5) -> list[tuple[int, float]]`
+- `normalize_embedding(emb) -> np.ndarray`
+- `normalize_batch(matrix) -> np.ndarray`

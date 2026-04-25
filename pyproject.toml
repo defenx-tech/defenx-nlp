@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 # ── Project metadata (PEP 621) ────────────────────────────────────────────────
 [project]
 name            = "defenx-nlp"
-version         = "0.2.1"
+version         = "1.0.1"
 description     = "Semantic NLP intelligence toolkit — encoding, embeddings, GPU/CPU device handling, and reusable inference interfaces."
 readme          = "README.md"
 license         = { file = "LICENSE" }
@@ -21,7 +21,7 @@ keywords = [
 ]
 
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
@@ -39,17 +39,16 @@ classifiers = [
 dependencies = [
     "numpy>=1.24",
     "sentence-transformers>=2.2.0",
-    # torch is intentionally NOT pinned here — let the user install their
-    # preferred variant (CPU / CUDA 11 / CUDA 12 / ROCm) via the extras below.
+    # torch remains a core dependency so the package works out of the box.
+    # Users who want a CUDA build can reinstall torch from the matching
+    # PyTorch index after installing defenx-nlp.
     "torch>=2.0",
 ]
 
 # ── Optional extras ───────────────────────────────────────────────────────────
 [project.optional-dependencies]
-# CUDA torch cannot be specified via extras (it ships from a separate index URL).
-# Install manually with:
-#   pip install torch --index-url https://download.pytorch.org/whl/cu128
-# The cpu extra just ensures a CPU-only torch is present if the user has no GPU.
+# CUDA torch cannot be specified via extras because it ships from a separate
+# index URL. Reinstall torch manually with the appropriate CUDA wheel if needed.
 cpu = ["torch>=2.0"]
 # pip install defenx-nlp[dev]
 dev    = ["pytest>=7.4", "pytest-cov", "ruff", "mypy", "twine", "build"]

@@ -1,73 +1,79 @@
 # defenx-nlp
 
-**Lightweight Semantic Embedding & Inference Runtime for Python**
+Lightweight semantic NLP building blocks for Python.
 
-> Standardizes semantic embedding inference across CPU, CUDA, and API backends with a single interface.
-> One encoder. Swap the backend. Keep the same code.
+`defenx-nlp` gives you one interface for text embeddings, semantic retrieval,
+prototype-based inference, and simple end-to-end NLP pipelines. It is designed
+for developers who want production-friendly primitives without wiring the same
+boilerplate in every project.
 
 [![PyPI version](https://img.shields.io/pypi/v/defenx-nlp)](https://pypi.org/project/defenx-nlp/)
 [![Python](https://img.shields.io/pypi/pyversions/defenx-nlp)](https://pypi.org/project/defenx-nlp/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
----
+## What It Does
 
-## Overview
+The package currently covers four layers:
 
-Same encoder, same interface, different problems:
+- `SemanticEncoder`: a backend-driven embedding facade for local transformer models.
+- `SemanticSearchEngine`: semantic indexing and retrieval over embedded documents.
+- `PrototypeInferenceEngine`: lightweight embedding-based classification and scoring.
+- `NLPipeline`: preprocessing -> encode -> infer orchestration with structured output.
 
-```python
-from defenx_nlp import SemanticEncoder, cosine_similarity, batch_cosine_similarity
-from defenx_nlp import normalize_embedding
+This makes the project useful for:
 
-enc = SemanticEncoder()   # one encoder for everything
+- support ticket routing
+- internal knowledge search
+- FAQ and help center retrieval
+- anomaly or incident scoring
+- semantic deduplication and clustering
+- retrieval-augmented backends
 
-# ── Semantic search ───────────────────────────────────────
-docs = ["Install Python on Linux", "Reset your password", "Upgrade RAM"]
-doc_embs = enc.encode_batch(docs)
-q = enc.encode("how to set up python")
-scores = batch_cosine_similarity(q, doc_embs)
-print(docs[scores.argmax()])   # "Install Python on Linux"
+## Who Uses It
 
-# ── Anomaly detection ────────────────────────────────────
-normal = enc.encode_batch(["User login", "Page viewed", "Session started"])
-baseline = normalize_embedding(normal.mean(axis=0))
-suspect = enc.encode("rm -rf / executed as root")
-print(cosine_similarity(baseline, suspect))   # ~0.15 — anomaly
+This is primarily a developer library, not a direct end-user application.
 
-# ── Clustering / labelling ───────────────────────────────
-labels = {"billing": enc.encode("payment invoice charge"),
-          "support": enc.encode("help issue problem")}
-ticket = enc.encode("I was charged twice")
-best = max(labels, key=lambda k: cosine_similarity(labels[k], ticket))
-print(best)   # "billing"
-```
+Typical users are:
 
-Three domains, zero code changes to the encoder. That's the point.
+- Python backend developers
+- ML engineers building semantic features
+- support tooling teams
+- security/SOC teams experimenting with event similarity
+- teams building internal search or classification workflows
 
----
+End users would normally interact with it indirectly inside:
+
+- a FastAPI or Flask service
+- a chatbot or RAG system
+- a support desk platform
+- an admin dashboard
+- a data processing or analytics job
 
 ## Architecture
 
 ![defenx-nlp architecture](docs/architecture.png)
 
----
-
 ## Installation
 
-### Standard (CPU)
+### Standard install
 
 ```bash
 pip install defenx-nlp
 ```
 
-### With CUDA 12 (RTX 30/40 series, recommended)
+This installs the package and its core dependencies for a normal CPU workflow.
+
+### CUDA install
+
+If you want a CUDA-enabled PyTorch build, reinstall `torch` with the matching
+wheel after installing the package:
 
 ```bash
 pip install defenx-nlp
-pip install torch --index-url https://download.pytorch.org/whl/cu128
+pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu128
 ```
 
-### Development install (editable + test tools)
+### Development install
 
 ```bash
 git clone https://github.com/defenx-sec/defenx-nlp.git
@@ -75,302 +81,205 @@ cd defenx-nlp
 pip install -e ".[dev]"
 ```
 
----
-
 ## Quick Start
+
+### 1. Encode text
 
 ```python
 from defenx_nlp import SemanticEncoder
 
-# Auto-detects CUDA — falls back to CPU silently
 enc = SemanticEncoder()
 
-# Encode a single sentence → (384,) float32 numpy array
-embedding = enc.encode("Neural networks are universal approximators.")
-print(embedding.shape)   # (384,)
-print(embedding.dtype)   # float32
+embedding = enc.encode("Neural networks are useful for semantic search.")
+print(embedding.shape)  # (384,)
 
-# Batch encode — much faster than looping
-embeddings = enc.encode_batch(["Hello", "Goodbye", "Help me please"])
+embeddings = enc.encode_batch(["hello", "goodbye", "help me"])
 print(embeddings.shape)  # (3, 384)
 ```
 
-### Semantic similarity
+### 2. Semantic retrieval
 
 ```python
-from defenx_nlp import SemanticEncoder, cosine_similarity
+from defenx_nlp import SemanticEncoder, SemanticSearchEngine
 
 enc = SemanticEncoder()
-e1 = enc.encode("I love machine learning")
-e2 = enc.encode("I enjoy deep learning")
+search = SemanticSearchEngine(enc)
 
-sim = cosine_similarity(e1, e2)
-print(f"Similarity: {sim:.3f}")   # ~0.87
+search.index(
+    [
+        "Reset your password",
+        "Check your latest invoice",
+        "Troubleshoot login issues",
+    ]
+)
+
+results = search.search("I cannot sign in to my account", top_k=2)
+for match in results:
+    print(match.rank, round(match.score, 3), match.document.text)
 ```
 
-### Top-k retrieval
+### 3. Prototype-based classification
 
 ```python
-from defenx_nlp import SemanticEncoder, top_k_similar
+from defenx_nlp import SemanticEncoder, PrototypeInferenceEngine
 
 enc = SemanticEncoder()
-corpus = ["Help me", "Goodbye", "Great job!", "What is AI?"]
-query  = "Can you assist me?"
+engine = PrototypeInferenceEngine.from_texts(
+    enc,
+    {
+        "support": ["reset password", "cannot log in", "account help"],
+        "billing": ["charged twice", "refund request", "invoice issue"],
+    },
+)
 
-c_embs = [enc.encode(t) for t in corpus]
-q_emb  = enc.encode(query)
-
-results = top_k_similar(q_emb, c_embs, k=1)
-print(corpus[results[0][0]])   # "Help me"
+prediction = engine.infer(enc.encode("please help me reset my login"))
+print(prediction.label)
+print(prediction.score)
 ```
 
-### Text preprocessing
+### 4. Run a simple pipeline
 
 ```python
-from defenx_nlp import clean_text, batch_clean
+from defenx_nlp import (
+    NLPipeline,
+    PreprocessingConfig,
+    PrototypeInferenceEngine,
+    SemanticEncoder,
+)
 
-text = clean_text("  HELLO  WORLD!  ", lowercase=True)
-# → "hello world!"
+enc = SemanticEncoder()
+inference = PrototypeInferenceEngine.from_texts(
+    enc,
+    {
+        "support": ["reset password", "login problem"],
+        "billing": ["refund request", "invoice problem"],
+    },
+)
 
-texts = batch_clean(["  A  ", " B  "], lowercase=True)
-# → ["a", "b"]
+pipeline = NLPipeline(
+    enc,
+    inference_engine=inference,
+    preprocessing_config=PreprocessingConfig(lowercase=True),
+)
+
+result = pipeline.run("HELP! I cannot access my account.")
+print(result.processed_text)
+print(result.prediction.label)
 ```
 
-### CUDA warmup (for production services)
+## Why Use This Instead Of Raw sentence-transformers?
 
-```python
-enc = SemanticEncoder(lazy=False)
-enc.warmup()   # initialise CuDNN kernels at startup, not first request
-```
+You can absolutely use `sentence-transformers` directly. This project becomes
+helpful when you want a cleaner application-facing layer around embeddings.
 
----
-
-## Why not just use sentence-transformers directly?
-
-You can. `defenx-nlp` is built on top of it. But if you use `sentence-transformers` raw, you end up writing the same boilerplate in every project:
-
-| Problem | sentence-transformers | defenx-nlp |
-|---|---|---|
-| Device handling | You write `torch.cuda.is_available()` checks yourself | `get_device("auto")` — handled |
-| Thread safety | Not built in, you add locks yourself | Double-checked locking in `SemanticEncoder` |
-| Lazy loading | Model loads at import time, slows startup | Loads on first `encode()` call, not at import |
-| Swap backends | Rewrite code when switching from local model to OpenAI | Subclass `BaseEncoder`, same interface |
-| Output format | Returns tensors or numpy depending on flags | Always returns CPU float32 numpy arrays |
-| Production warmup | You figure out CuDNN cold-start yourself | `enc.warmup()` — one line |
-| Preprocessing | Bring your own | `clean_text()`, `batch_clean()`, `truncate()` included |
-
-If you're writing a one-off script, `sentence-transformers` alone is fine.
-If you're building something that goes into production, or you need to swap models/backends later, `defenx-nlp` saves you from re-solving these problems every time.
-
----
+| Problem | Raw sentence-transformers | defenx-nlp |
+| --- | --- | --- |
+| Device selection | You handle CPU/CUDA/MPS decisions yourself | `get_device()` is built in |
+| Service-friendly facade | Model code leaks into app logic | `SemanticEncoder` keeps a stable interface |
+| Retrieval layer | You wire indexing and ranking yourself | `SemanticSearchEngine` is ready to use |
+| Simple classifier | You build your own prototype scoring | `PrototypeInferenceEngine` is included |
+| End-to-end flow | You orchestrate each step manually | `NLPipeline` returns structured results |
+| Output consistency | Mix of tensors/arrays depending on flags | Returns `float32` NumPy arrays |
 
 ## API Summary
 
 | Symbol | Description |
-|---|---|
-| `SemanticEncoder` | Main encoder class — lazy, thread-safe, CUDA-aware |
-| `BaseEncoder` | Abstract base for custom encoder backends |
-| `BaseInferenceEngine` | Abstract base for downstream classifiers |
-| `get_device(preferred)` | Resolve `"auto"/"cuda"/"cpu"/"mps"` → `torch.device` |
-| `device_info()` | Hardware diagnostic dictionary |
-| `clean_text(text, **opts)` | Configurable single-text cleaner |
-| `batch_clean(texts, **opts)` | Apply `clean_text` to a list |
-| `truncate(text, max_chars)` | Hard-truncate with optional ellipsis |
-| `cosine_similarity(a, b)` | Scalar cosine similarity in `[-1, 1]` |
-| `batch_cosine_similarity(q, M)` | Vectorised query-vs-matrix similarity `(N,)` |
-| `top_k_similar(q, corpus, k)` | Top-k retrieval → `[(idx, score)]` |
-| `normalize_embedding(v)` | L2-normalise a single embedding |
-| `normalize_batch(M)` | Row-wise L2-normalise `(N, D)` matrix |
+| --- | --- |
+| `SemanticEncoder` | Main embedding facade |
+| `SemanticSearchEngine` | Document indexing and semantic retrieval |
+| `NumpyVectorIndex` | NumPy-based cosine similarity index |
+| `FaissVectorIndex` | Optional FAISS-backed vector index |
+| `PrototypeInferenceEngine` | Prototype-based classifier/scoring engine |
+| `NLPipeline` | Preprocess -> encode -> infer pipeline |
+| `EncoderConfig` | Backend configuration object |
+| `PreprocessingConfig` | Cleaning/truncation config for the pipeline |
+| `DocumentRecord` | Structured retrieval document |
+| `SearchResult` | Ranked retrieval result |
+| `Prediction` | Structured inference output |
+| `PipelineResult` | Structured pipeline output |
+| `clean_text`, `batch_clean`, `truncate` | Preprocessing helpers |
+| `cosine_similarity`, `batch_cosine_similarity` | Similarity helpers |
+| `normalize_embedding`, `normalize_batch` | L2 normalization helpers |
 
-Full API docs: [`docs/api_reference.md`](docs/api_reference.md)
+Full API docs: [docs/api_reference.md](docs/api_reference.md)
 
----
+## Backends
 
-## Hardware Requirements
+The default backend is `sentence-transformers`.
 
-### Minimum
-| Component | Requirement |
-|---|---|
-| CPU | Dual-core, 64-bit |
-| RAM | 4 GB |
-| Disk | 500 MB (model cache) |
-| GPU | None (CPU mode) |
-| Python | 3.9+ |
+The package also exports backend contracts for future extension:
 
-### Recommended
-| Component | Requirement |
-|---|---|
-| CPU | 6+ cores (AMD Ryzen 7 / Intel Core i7+) |
-| RAM | 16 GB |
-| GPU | NVIDIA RTX 20-series or newer |
-| VRAM | 4+ GB |
-| CUDA | 11.8 or 12.x |
-| Python | 3.11+ |
+- `SentenceTransformerBackend`: implemented and production-usable
+- `OnnxEncoderBackend`: interface stub, not implemented yet
+- `APIEncoderBackend`: interface stub, not implemented yet
 
-> **Tested on:** AMD Ryzen 7235HS + NVIDIA RTX 3050 6 GB (CUDA 12.8) on Kali Linux (WSL2).
-> Average inference latency: **~15 ms/sentence on CUDA**, **~80 ms on CPU**.
+If you expose ONNX or remote API backends publicly, label them as experimental
+until they perform real inference.
 
----
-
-## Supported Operating Systems
-
-| OS | CPU mode | CUDA mode | Notes |
-|---|---|---|---|
-| **Linux** (Ubuntu 20.04+, Debian 11+, Kali) | Yes | Yes | Fully tested |
-| **Windows 10 / 11** | Yes | Yes | Use WSL2 for CUDA in WSL |
-| **macOS 12+** (Intel) | Yes | — | No NVIDIA CUDA support |
-| **macOS 12+** (Apple Silicon M1/M2/M3) | Yes | MPS | Use `device="mps"` |
-
----
-
-## Extending the Library
-
-### Custom encoder backend
-
-```python
-import numpy as np
-import torch
-from defenx_nlp import BaseEncoder
-
-class OpenAIEncoder(BaseEncoder):
-    """Drop-in encoder using OpenAI embeddings API."""
-
-    def __init__(self, api_key: str):
-        import openai
-        openai.api_key = api_key
-        self._client = openai.OpenAI()
-
-    def encode(self, text: str) -> np.ndarray:
-        resp = self._client.embeddings.create(
-            model="text-embedding-3-small", input=text
-        )
-        return np.array(resp.data[0].embedding, dtype=np.float32)
-
-    def encode_batch(self, texts):
-        resp = self._client.embeddings.create(
-            model="text-embedding-3-small", input=texts
-        )
-        return np.array([d.embedding for d in resp.data], dtype=np.float32)
-
-    @property
-    def embedding_dim(self) -> int: return 1536
-
-    @property
-    def device(self) -> torch.device: return torch.device("cpu")
-```
-
----
-
-## Running Tests
+## Examples
 
 ```bash
-# Install dev extras first
-pip install -e ".[dev]"
-
-# Run all tests
-pytest tests/ -v
-
-# With coverage
-pytest tests/ -v --cov=defenx_nlp --cov-report=term-missing
-```
-
-Expected output:
-```
-tests/test_encoder.py::TestSemanticEncoder::test_encode_shape          PASSED
-tests/test_encoder.py::TestSemanticEncoder::test_embedding_dim_property PASSED
-...
-13 passed in 42.3s
-```
-
----
-
-## Running Examples
-
-```bash
-# Basic single-sentence usage + similarity + retrieval
 python examples/basic_usage.py
-
-# Batch throughput benchmark + similarity matrix
 python examples/batch_encoding.py
+python examples/v2_pipeline.py
 ```
 
----
-
-## Publishing to PyPI
-
-### 1. Build the distribution
+## Testing
 
 ```bash
-pip install build twine
-python -m build
-# Creates dist/defenx_nlp-0.2.1.tar.gz and dist/defenx_nlp-0.2.1-py3-none-any.whl
+pytest tests -v
 ```
 
-### 2. Test on TestPyPI first (always)
+The test suite contains both:
 
-```bash
-twine upload --repository testpypi dist/*
-pip install --index-url https://test.pypi.org/simple/ defenx-nlp
-```
+- pure local unit tests for retrieval, inference, and pipeline logic
+- integration-style encoder tests that require the default model to be locally
+  available or downloadable
 
-### 3. Publish to real PyPI
-
-```bash
-twine upload dist/*
-```
-
-### 4. Verify the install
-
-```bash
-pip install defenx-nlp
-python -c "from defenx_nlp import SemanticEncoder; print(SemanticEncoder())"
-```
-
-### Versioning
-
-Update `version` in `pyproject.toml` before each release.
-Follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
-
----
+If the environment cannot reach Hugging Face and the model is not cached, the
+integration tests skip instead of failing the entire local test run.
 
 ## Project Structure
 
-```
+```text
 defenx-nlp/
-├── defenx_nlp/
-│   ├── __init__.py        Public API surface — all exports live here
-│   ├── encoder.py         SemanticEncoder — lazy, thread-safe, CUDA-aware
-│   ├── device.py          get_device() and device_info() helpers
-│   ├── preprocessing.py   clean_text, batch_clean, truncate, deduplicate
-│   ├── interfaces.py      BaseEncoder and BaseInferenceEngine ABCs
-│   └── utils.py           cosine_similarity, top_k_similar, normalize_*
-│
-├── tests/
-│   └── test_encoder.py    pytest suite — encoder, device, preprocessing, utils
-│
-├── examples/
-│   ├── basic_usage.py     Single-sentence encode, similarity, retrieval
-│   └── batch_encoding.py  Throughput benchmark, similarity matrix
-│
-├── docs/
-│   └── api_reference.md   Full API documentation
-│
-├── README.md              This file
-├── pyproject.toml         PEP 621 package metadata + build config
-└── LICENSE                MIT
+|-- defenx_nlp/
+|   |-- __init__.py
+|   |-- backends.py
+|   |-- device.py
+|   |-- encoder.py
+|   |-- inference.py
+|   |-- interfaces.py
+|   |-- pipeline.py
+|   |-- preprocessing.py
+|   |-- retrieval.py
+|   |-- schemas.py
+|   `-- utils.py
+|-- docs/
+|   |-- api_reference.md
+|   `-- architecture.png
+|-- examples/
+|   |-- basic_usage.py
+|   |-- batch_encoding.py
+|   `-- v2_pipeline.py
+|-- tests/
+|   |-- test_encoder.py
+|   `-- test_v2.py
+|-- pyproject.toml
+`-- README.md
 ```
 
----
+## Roadmap
+
+Good next milestones for the project:
+
+- implement the ONNX backend
+- implement a real API embedding backend
+- add persistence helpers for vector indexes
+- add FastAPI service examples
+- expand benchmark coverage for CPU vs CUDA vs FAISS
+- publish hosted documentation
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
----
-
-## Acknowledgements
-
-Built on top of:
-- [sentence-transformers](https://www.sbert.net/) by UKPLab
-- [PyTorch](https://pytorch.org/) by Meta AI
-- [all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) by Microsoft
+MIT. See [LICENSE](LICENSE).

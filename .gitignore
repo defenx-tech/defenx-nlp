@@ -2,7 +2,9 @@ __pycache__/
 *.pyc
 *.egg-info/
 dist/
+.dist/
 build/
+.tmp-pip/
 .venv/
 venv/
 .pytest_cache/
@@ -11,3 +13,6 @@ venv/
 htmlcov/
 *.pt
 *.pth
+.graphify*
+graphify-out
+defenx_nlp-*/

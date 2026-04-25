@@ -18,7 +18,13 @@ class TestSemanticEncoder:
     def encoder(self):
         """Single encoder instance shared across all tests in this class."""
         from defenx_nlp import SemanticEncoder
-        return SemanticEncoder(lazy=False)
+        try:
+            return SemanticEncoder(lazy=False)
+        except RuntimeError as exc:
+            message = str(exc)
+            if "Failed to load sentence-transformers model" in message:
+                pytest.skip(f"SentenceTransformer integration unavailable: {message}")
+            raise
 
     def test_encode_returns_ndarray(self, encoder):
         emb = encoder.encode("hello world")
