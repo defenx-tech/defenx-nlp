@@ -76,7 +76,7 @@ pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu128
 ### Development install
 
 ```bash
-git clone https://github.com/defenx-sec/defenx-nlp.git
+git clone https://github.com/defenx-tech/defenx-nlp.git
 cd defenx-nlp
 pip install -e ".[dev]"
 ```

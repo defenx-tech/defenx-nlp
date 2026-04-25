@@ -56,9 +56,9 @@ dev    = ["pytest>=7.4", "pytest-cov", "ruff", "mypy", "twine", "build"]
 docs   = ["mkdocs>=1.5", "mkdocs-material>=9.0"]
 
 [project.urls]
-Homepage    = "https://github.com/defenx-sec/defenx-nlp"
-Repository  = "https://github.com/defenx-sec/defenx-nlp"
-Issues      = "https://github.com/defenx-sec/defenx-nlp/issues"
+Homepage    = "https://github.com/defenx-tech/defenx-nlp"
+Repository  = "https://github.com/defenx-tech/defenx-nlp"
+Issues      = "https://github.com/defenx-tech/defenx-nlp/issues"
 
 # ── Package discovery ─────────────────────────────────────────────────────────
 [tool.setuptools.packages.find]
